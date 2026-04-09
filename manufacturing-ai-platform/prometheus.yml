@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:8000']
+
+  - job_name: 'agent-dispatcher'
+    static_configs:
+      - targets: ['agent-dispatcher:8000']
+
+  - job_name: 'procurement-service'
+    static_configs:
+      - targets: ['procurement-service:8000']
+
+  - job_name: 'inventory-service'
+    static_configs:
+      - targets: ['inventory-service:8000']
+
+  - job_name: 'rpa-executor'
+    static_configs:
+      - targets: ['rpa-executor:8000']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:9187']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:9121']
+
+  - job_name: 'qdrant'
+    static_configs:
+      - targets: ['qdrant:6333']

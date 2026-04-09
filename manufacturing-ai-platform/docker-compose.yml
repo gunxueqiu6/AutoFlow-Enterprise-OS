@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  # --- 数据库与基础设施 ---
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - ai-platform-net
+
+  qdrant:
+    image: qdrant/qdrant:v1.11.4
+    container_name: qdrant
+    restart: always
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+    networks:
+      - ai-platform-net
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: redis
+    restart: always
+    networks:
+      - ai-platform-net
+
+  # --- AI能力服务 ---
+  paddleocr:
+    image: registry.baidubce.com/paddlepaddle/paddleocr:latest
+    container_name: paddleocr
+    restart: always
+    ports:
+      - "8081:8081"
+    command: ["python3", "/PaddleOCR/deploy/hubserving/ocr_system/module.py", "--port=8081"]
+    networks:
+      - ai-platform-net
+
+  whisper-cpp:
+    image: ghcr.io/ggerganov/whisper.cpp:main
+    container_name: whisper-cpp
+    restart: always
+    ports:
+      - "8082:8082"
+    command: ["/bin/sh", "-c", "cd examples/server && ./server -m /models/ggml-base.en.bin --port 8082"]
+    volumes:
+      - ./models:/models # 需要预先下载模型到本地models目录
+    networks:
+      - ai-platform-net
+
+  # --- 业务微服务 ---
+  gateway:
+    build: ./services/gateway
+    container_name: gateway
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - agent-dispatcher
+    networks:
+      - ai-platform-net
+
+  agent-dispatcher:
+    build: ./services/agent-dispatcher
+    container_name: agent-dispatcher
+    restart: always
+    depends_on:
+      - postgres
+      - qdrant
+      - redis
+      - paddleocr
+      - whisper-cpp
+    networks:
+      - ai-platform-net
+
+  procurement-service:
+    build: ./services/procurement-service
+    container_name: procurement-service
+    restart: always
+    depends_on:
+      - postgres
+      - rpa-executor
+    networks:
+      - ai-platform-net
+
+  inventory-service:
+    build: ./services/inventory-service
+    container_name: inventory-service
+    restart: always
+    depends_on:
+      - postgres
+    networks:
+      - ai-platform-net
+
+  rpa-executor:
+    build: ./services/rpa-executor
+    container_name: rpa-executor
+    restart: always
+    # Playwright需要特殊权限
+    privileged: true
+    networks:
+      - ai-platform-net
+
+volumes:
+  postgres-data:
+  qdrant-data:
+
+networks:
+  ai-platform-net:
+    driver: bridge

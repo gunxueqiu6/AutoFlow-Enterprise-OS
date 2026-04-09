@@ -1,0 +1,78 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+    
+    - name: Build and push gateway
+      uses: docker/build-push-action@v4
+      with:
+        context: ./services/gateway
+        push: ${{ github.event_name == 'push' }}
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-gateway:${{ github.sha }},${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-gateway:latest
+    
+    - name: Build and push agent-dispatcher
+      uses: docker/build-push-action@v4
+      with:
+        context: ./services/agent-dispatcher
+        push: ${{ github.event_name == 'push' }}
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-agent-dispatcher:${{ github.sha }},${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-agent-dispatcher:latest
+    
+    - name: Build and push procurement-service
+      uses: docker/build-push-action@v4
+      with:
+        context: ./services/procurement-service
+        push: ${{ github.event_name == 'push' }}
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-procurement:${{ github.sha }},${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-procurement:latest
+    
+    - name: Build and push inventory-service
+      uses: docker/build-push-action@v4
+      with:
+        context: ./services/inventory-service
+        push: ${{ github.event_name == 'push' }}
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-inventory:${{ github.sha }},${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-inventory:latest
+    
+    - name: Build and push rpa-executor
+      uses: docker/build-push-action@v4
+      with:
+        context: ./services/rpa-executor
+        push: ${{ github.event_name == 'push' }}
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-rpa-executor:${{ github.sha }},${{ secrets.DOCKER_HUB_USERNAME }}/manufacturing-ai-rpa-executor:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up SSH
+      uses: appleboy/ssh-action@v0.1.5
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        password: ${{ secrets.SERVER_PASSWORD }}
+        port: ${{ secrets.SERVER_PORT }}
+        script: |
+          cd /opt/manufacturing-ai-platform
+          git pull origin main
+          cp .env.production .env
+          docker-compose -f docker-compose.prod.yml up -d --build
+          docker system prune -f
